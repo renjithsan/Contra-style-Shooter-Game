@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contra-style Shooter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #1a202c;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem;
+        }
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            width: 100%;
+            max-width: 800px;
+        }
+        canvas {
+            background-color: #000000;
+            border: 4px solid #ffffff;
+            box-shadow: 0 0 20px #00ff00;
+            image-rendering: pixelated;
+        }
+        #game-info {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            padding: 0 1rem;
+        }
+        #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            gap: 2rem;
+            text-align: center;
+        }
+        .retro-button {
+            background-color: #00ff00;
+            color: #000000;
+            padding: 1rem 2rem;
+            border: 2px solid #000000;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 4px 4px 0 #00aa00;
+            transition: all 0.1s ease-in-out;
+            font-size: 1rem;
+        }
+        .retro-button:hover {
+            box-shadow: 2px 2px 0 #00aa00;
+            transform: translate(2px, 2px);
+        }
+        .title {
+            font-size: 2rem;
+            color: #ffffff;
+            text-shadow: 4px 4px #ff0000;
+            margin: 0;
+        }
+        .score-text {
+            font-size: 1.25rem;
+            color: #00ff00;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="game-info">
+        <div id="score" class="score-text">Score: 0</div>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <div id="game-over-screen">
+        <h1 class="title">Game Over!</h1>
+        <p id="final-score" class="score-text"></p>
+        <button id="restart-button" class="retro-button">Restart</button>
+    </div>
+</div>
+
+<script>
+    // Constants and Game State
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreElement = document.getElementById('score');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const finalScoreElement = document.getElementById('final-score');
+    const restartButton = document.getElementById('restart-button');
+
+    const PLAYER_SIZE = 20;
+    const BULLET_SIZE = 5;
+    const ENEMY_SIZE = 15;
+    const PLAYER_SPEED = 4;
+    const BULLET_SPEED = 7;
+    const ENEMY_SPEED = 1;
+    const ENEMY_SPAWN_INTERVAL = 1000; // in milliseconds
+
+    let score = 0;
+    let isGameOver = false;
+    let lastEnemySpawn = Date.now();
+
+    let player = {
+        x: 0,
+        y: 0,
+        dx: 0,
+        dy: 0,
+        color: '#00ff00'
+    };
+
+    let bullets = [];
+    let enemies = [];
+    let keys = {}; // Object to track pressed keys for multi-directional movement
+
+    // --- Game Logic Functions ---
+
+    // Function to resize canvas to fit the window while maintaining aspect ratio
+    function resizeCanvas() {
+        canvas.width = Math.min(window.innerWidth - 32, 800);
+        canvas.height = canvas.width * (9 / 16); // 16:9 aspect ratio
+        player.x = canvas.width / 2;
+        player.y = canvas.height / 2;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+
+    // Player movement update
+    function updatePlayer() {
+        if (keys['ArrowUp'] || keys['w']) player.dy = -PLAYER_SPEED;
+        else if (keys['ArrowDown'] || keys['s']) player.dy = PLAYER_SPEED;
+        else player.dy = 0;
+
+        if (keys['ArrowLeft'] || keys['a']) player.dx = -PLAYER_SPEED;
+        else if (keys['ArrowRight'] || keys['d']) player.dx = PLAYER_SPEED;
+        else player.dx = 0;
+
+        player.x += player.dx;
+        player.y += player.dy;
+
+        // Keep player within canvas bounds
+        if (player.x < PLAYER_SIZE / 2) player.x = PLAYER_SIZE / 2;
+        if (player.x > canvas.width - PLAYER_SIZE / 2) player.x = canvas.width - PLAYER_SIZE / 2;
+        if (player.y < PLAYER_SIZE / 2) player.y = PLAYER_SIZE / 2;
+        if (player.y > canvas.height - PLAYER_SIZE / 2) player.y = canvas.height - PLAYER_SIZE / 2;
+    }
+
+    // Bullet and enemy update
+    function updateBulletsAndEnemies() {
+        // Update bullets
+        bullets = bullets.filter(bullet => {
+            bullet.x += bullet.dx;
+            bullet.y += bullet.dy;
+            // Remove bullets that are off-screen
+            return bullet.x > 0 && bullet.x < canvas.width && bullet.y > 0 && bullet.y < canvas.height;
+        });
+
+        // Update enemies
+        enemies.forEach(enemy => {
+            // Simple AI: move towards the player
+            const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+            enemy.x += Math.cos(angle) * ENEMY_SPEED;
+            enemy.y += Math.sin(angle) * ENEMY_SPEED;
+        });
+    }
+
+    // Spawn a new enemy from a random edge of the canvas
+    function spawnEnemy() {
+        let x, y;
+        const edge = Math.floor(Math.random() * 4); // 0: top, 1: right, 2: bottom, 3: left
+
+        switch (edge) {
+            case 0: // Top
+                x = Math.random() * canvas.width;
+                y = -ENEMY_SIZE;
+                break;
+            case 1: // Right
+                x = canvas.width + ENEMY_SIZE;
+                y = Math.random() * canvas.height;
+                break;
+            case 2: // Bottom
+                x = Math.random() * canvas.width;
+                y = canvas.height + ENEMY_SIZE;
+                break;
+            case 3: // Left
+                x = -ENEMY_SIZE;
+                y = Math.random() * canvas.height;
+                break;
+        }
+
+        enemies.push({ x, y, size: ENEMY_SIZE, color: '#ff0000' });
+    }
+
+    // Check for collisions
+    function checkCollisions() {
+        // Bullet-enemy collision
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            for (let j = enemies.length - 1; j >= 0; j--) {
+                const bullet = bullets[i];
+                const enemy = enemies[j];
+                const dist = Math.hypot(bullet.x - enemy.x, bullet.y - enemy.y);
+                if (dist < BULLET_SIZE + ENEMY_SIZE) {
+                    // Collision detected
+                    bullets.splice(i, 1);
+                    enemies.splice(j, 1);
+                    score += 10;
+                    scoreElement.textContent = `Score: ${score}`;
+                    break; // break inner loop as bullet is gone
+                }
+            }
+        }
+
+        // Player-enemy collision
+        enemies.forEach(enemy => {
+            const dist = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+            if (dist < PLAYER_SIZE / 2 + ENEMY_SIZE / 2) {
+                isGameOver = true;
+            }
+        });
+    }
+
+    // --- Drawing Functions ---
+
+    function drawPlayer() {
+        ctx.fillStyle = player.color;
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, PLAYER_SIZE / 2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    function drawBullets() {
+        ctx.fillStyle = '#ffff00';
+        bullets.forEach(bullet => {
+            ctx.beginPath();
+            ctx.arc(bullet.x, bullet.y, BULLET_SIZE, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    }
+
+    function drawEnemies() {
+        ctx.fillStyle = '#ff0000';
+        enemies.forEach(enemy => {
+            ctx.beginPath();
+            ctx.arc(enemy.x, enemy.y, ENEMY_SIZE / 2, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    }
+
+    // --- Main Game Loop ---
+    function gameLoop() {
+        if (isGameOver) {
+            gameOverScreen.style.display = 'flex';
+            finalScoreElement.textContent = `Your Score: ${score}`;
+            return;
+        }
+
+        // Check to spawn new enemies
+        if (Date.now() - lastEnemySpawn > ENEMY_SPAWN_INTERVAL) {
+            spawnEnemy();
+            lastEnemySpawn = Date.now();
+        }
+
+        // Update all game objects
+        updatePlayer();
+        updateBulletsAndEnemies();
+        checkCollisions();
+
+        // Clear canvas and redraw everything
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawPlayer();
+        drawBullets();
+        drawEnemies();
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    // --- Event Listeners and Initialization ---
+
+    document.addEventListener('keydown', (e) => {
+        keys[e.key] = true;
+    });
+
+    document.addEventListener('keyup', (e) => {
+        keys[e.key] = false;
+    });
+
+    // Handle shooting on spacebar press (and mouse click for mobile)
+    document.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.key === 'Spacebar') {
+            // Calculate bullet direction
+            const angle = Math.atan2(player.dy, player.dx) || -Math.PI / 2; // Default to up if no movement
+            const dx = Math.cos(angle) * BULLET_SPEED;
+            const dy = Math.sin(angle) * BULLET_SPEED;
+
+            bullets.push({
+                x: player.x,
+                y: player.y,
+                dx,
+                dy
+            });
+        }
+    });
+
+    // Restart button functionality
+    restartButton.addEventListener('click', () => {
+        score = 0;
+        scoreElement.textContent = `Score: ${score}`;
+        bullets = [];
+        enemies = [];
+        isGameOver = false;
+        gameOverScreen.style.display = 'none';
+        gameLoop();
+    });
+
+    // Start the game loop
+    window.onload = function () {
+        gameLoop();
+    }
+</script>
+
+</body>
+</html>

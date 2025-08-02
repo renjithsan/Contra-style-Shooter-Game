@@ -1,0 +1,32 @@
+{
+  "name": "contra-style-shooter",
+  "version": "1.0.0",
+  "description": "A retro-styled browser-based shooter game inspired by the classic Contra series",
+  "main": "index.html",
+  "scripts": {
+    "start": "start index.html",
+    "open": "start index.html"
+  },
+  "keywords": [
+    "game",
+    "shooter",
+    "retro",
+    "contra",
+    "html5",
+    "canvas",
+    "javascript",
+    "browser-game"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/contra-style-shooter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/contra-style-shooter/issues"
+  },
+  "homepage": "https://github.com/yourusername/contra-style-shooter#readme"
+}
